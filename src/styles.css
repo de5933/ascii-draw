@@ -1,0 +1,81 @@
+/* Every bundled weight (only the subsets a page uses are downloaded). */
+@import '@fontsource/jetbrains-mono/100.css';
+@import '@fontsource/jetbrains-mono/200.css';
+@import '@fontsource/jetbrains-mono/300.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/600.css';
+@import '@fontsource/jetbrains-mono/700.css';
+@import '@fontsource/jetbrains-mono/800.css';
+@import '@fontsource/ibm-plex-mono/100.css';
+@import '@fontsource/ibm-plex-mono/200.css';
+@import '@fontsource/ibm-plex-mono/300.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+@import '@fontsource/ibm-plex-mono/600.css';
+@import '@fontsource/ibm-plex-mono/700.css';
+@import '@fontsource/fira-mono/400.css';
+@import '@fontsource/fira-mono/500.css';
+@import '@fontsource/fira-mono/700.css';
+
+:root {
+  color-scheme: dark;
+  --workspace-bg: #1b1d21;
+  --panel-bg: #25282d;
+  --border: #3a3e45;
+  --text: #e4e6ea;
+  --text-muted: #9aa0a8;
+  --accent: #4c8dff;
+  --danger: #ff6b6b;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--workspace-bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: #30343a;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #3a3e45;
+}
+
+button.active,
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+input,
+select {
+  font: inherit;
+  color: var(--text);
+  background: #1e2024;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+button:disabled:hover {
+  background: #30343a;
+}

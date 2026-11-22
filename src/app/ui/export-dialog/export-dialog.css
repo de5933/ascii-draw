@@ -1,0 +1,18 @@
+.filename {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filename input {
+  width: 160px;
+}
+
+.ext {
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+select[name='scale'] {
+  width: 210px;
+}

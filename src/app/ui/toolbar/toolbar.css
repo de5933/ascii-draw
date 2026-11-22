@@ -1,0 +1,34 @@
+:host {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  margin-right: 12px;
+}
+
+.sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 0 6px;
+}
+
+.zoom {
+  min-width: 3.5em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}

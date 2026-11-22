@@ -1,0 +1,47 @@
+.preview {
+  display: block;
+  max-width: 320px;
+  max-height: 200px;
+  margin: 0 auto 8px;
+  border: 1px solid var(--border);
+  background: repeating-conic-gradient(#444 0 25%, #333 0 50%) 0 0 / 16px 16px;
+}
+
+.meta,
+.hint {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0 0 12px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+label.check {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+label.check input {
+  width: auto;
+}
+
+.apply {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px 0;
+  margin: 4px 0 12px;
+}
+
+.apply legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.apply label.check {
+  margin-bottom: 6px;
+}
+
+.hint.left {
+  text-align: left;
+  margin: 4px 0 8px;
+}

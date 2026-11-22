@@ -1,0 +1,429 @@
+import { Injectable, computed, signal } from '@angular/core';
+import { BLACK, PackedColor, WHITE } from '../core/color';
+import { AsciiDoc, createDoc, getCell, inBounds } from '../core/document';
+import { DEFAULT_FONT_ID, getFont, glyphsFor, nearestWeight } from '../core/fonts/fonts';
+import { History } from '../core/history';
+import { BrushShape } from '../core/raster';
+import { Channels, PaintSettings, Stroke, ToolId } from '../core/tools/paint';
+import { TextSelection, moveFocus, selectCells, selectedText, selectionRange, wordAt } from '../core/tools/selection';
+import { CaretMove, TextSession } from '../core/tools/text';
+
+export const ZOOM_LEVELS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8] as const;
+export const MAX_BRUSH_SIZE = 25;
+
+export interface CellPos {
+  x: number;
+  y: number;
+}
+
+/** Where the text caret is, for drawing it. */
+export interface TextCaret {
+  x: number;
+  y: number;
+  /** Text origin: wrapped lines start at column x0. */
+  x0: number;
+  y0: number;
+  rows: number;
+}
+
+/** App-wide editor state. */
+@Injectable({ providedIn: 'root' })
+export class EditorStore {
+  readonly doc = signal<AsciiDoc>(createDoc(80, 40, DEFAULT_FONT_ID));
+  /**
+   * Bumped after in-place edits that need a full redraw.
+   * (The doc's typed arrays are mutated directly for speed.)
+   */
+  readonly docVersion = signal(0);
+  /** Bumped when specific cells changed; views fetch them with takeDirtyCells(). */
+  readonly cellsVersion = signal(0);
+  /** Used to name exported files: the imported image's name, or "untitled". */
+  readonly docName = signal('untitled');
+  readonly zoom = signal(1);
+  readonly showGrid = signal(false);
+  /** Cell currently under the pointer, if any. */
+  readonly hoverCell = signal<CellPos | null>(null);
+
+  // Tool settings
+  readonly tool = signal<ToolId>('brush');
+  readonly fg = signal<PackedColor>(WHITE);
+  readonly bg = signal<PackedColor>(BLACK);
+  readonly ch = signal('@');
+  readonly channels = signal<Channels>({ fg: true, bg: true, ch: true });
+  readonly brushSize = signal(1);
+  readonly brushShape = signal<BrushShape>('square');
+
+  /** Set while a text session is open. */
+  readonly textCaret = signal<TextCaret | null>(null);
+  /** Text selection over the document (text tool), or null. */
+  readonly selection = signal<TextSelection | null>(null);
+  /** Number of selected cells. */
+  readonly selectionSize = computed(() => {
+    const r = selectionRange(this.selection());
+    return r ? r[1] - r[0] : 0;
+  });
+
+  readonly canUndo = signal(false);
+  readonly canRedo = signal(false);
+
+  readonly font = computed(() => getFont(this.doc().fontId));
+  readonly fontWeight = computed(() => this.doc().fontWeight);
+  /** Characters of the document's font at its weight, darkest first. */
+  readonly glyphs = computed(() => glyphsFor(this.font(), this.fontWeight()));
+  readonly paintSettings = computed<PaintSettings>(() => ({
+    fg: this.fg(),
+    bg: this.bg(),
+    ch: this.ch(),
+    channels: this.channels(),
+    size: this.brushSize(),
+    shape: this.brushShape(),
+  }));
+
+  private readonly history = new History();
+  private stroke: Stroke | null = null;
+  private text: TextSession | null = null;
+  private dirty = new Set<number>();
+
+  // ---- Document ----
+
+  /** New blank document. Keeps the current weight if the font has it (else the nearest). */
+  newDoc(width: number, height: number, fontId: string): void {
+    const weight = nearestWeight(getFont(fontId), this.doc().fontWeight);
+    this.loadDoc(createDoc(width, height, fontId, undefined, weight));
+  }
+
+  /** Replaces the current document (e.g. after importing an image). Clears undo history. */
+  loadDoc(doc: AsciiDoc, name = 'untitled'): void {
+    this.docName.set(name);
+    const font = getFont(doc.fontId); // validate
+    if (!font.weights.includes(doc.fontWeight)) doc = { ...doc, fontWeight: nearestWeight(font, doc.fontWeight) };
+    this.stroke = null;
+    this.text = null;
+    this.textCaret.set(null);
+    this.selection.set(null);
+    this.history.clear();
+    this.syncHistory();
+    this.dirty.clear();
+    this.doc.set(doc);
+    this.hoverCell.set(null);
+  }
+
+  /** Changes the whole document's font, keeping the weight (or the nearest the font has). */
+  setFont(fontId: string): void {
+    const font = getFont(fontId); // validates
+    this.endText();
+    this.doc.update((d) => ({ ...d, fontId, fontWeight: nearestWeight(font, d.fontWeight) }));
+  }
+
+  /** Changes the whole document's font weight. Must be one the font has. */
+  setFontWeight(weight: number): void {
+    if (!this.font().weights.includes(weight)) throw new Error(`${this.font().name} has no weight ${weight}`);
+    this.endText();
+    this.doc.update((d) => ({ ...d, fontWeight: weight }));
+  }
+
+  markDocChanged(): void {
+    this.docVersion.update((v) => v + 1);
+  }
+
+  /** Returns and clears the cells changed since the last call. */
+  takeDirtyCells(): number[] {
+    const cells = [...this.dirty];
+    this.dirty.clear();
+    return cells;
+  }
+
+  private markCells(indices: Iterable<number>): void {
+    let any = false;
+    for (const i of indices) {
+      this.dirty.add(i);
+      any = true;
+    }
+    if (any) this.cellsVersion.update((v) => v + 1);
+  }
+
+  // ---- Painting ----
+
+  setTool(tool: ToolId): void {
+    if (tool !== 'text') {
+      this.endText();
+      this.selection.set(null);
+    }
+    this.tool.set(tool);
+  }
+
+  beginStroke(x: number, y: number): void {
+    this.endText();
+    this.stroke = new Stroke(this.doc(), this.tool(), this.paintSettings());
+    this.markCells(this.stroke.to(x, y));
+  }
+
+  strokeTo(x: number, y: number): void {
+    if (this.stroke) this.markCells(this.stroke.to(x, y));
+  }
+
+  endStroke(): void {
+    const entry = this.stroke?.finish();
+    this.stroke = null;
+    if (entry) {
+      this.history.push(entry);
+      this.syncHistory();
+    }
+  }
+
+  get stroking(): boolean {
+    return this.stroke !== null;
+  }
+
+  /** Eyedropper: copies a cell's colors and character into the tool settings. */
+  pickFrom(x: number, y: number): void {
+    const doc = this.doc();
+    if (!inBounds(doc, x, y)) return;
+    const c = getCell(doc, x, y);
+    this.fg.set(c.fg);
+    this.bg.set(c.bg);
+    this.ch.set(c.ch);
+  }
+
+  undo(): void {
+    if (this.stroke) return;
+    this.endText();
+    const cells = this.history.undo(this.doc());
+    if (cells) this.markCells(cells);
+    this.syncHistory();
+  }
+
+  redo(): void {
+    if (this.stroke) return;
+    this.endText();
+    const cells = this.history.redo(this.doc());
+    if (cells) this.markCells(cells);
+    this.syncHistory();
+  }
+
+  private syncHistory(): void {
+    this.canUndo.set(this.history.canUndo);
+    this.canRedo.set(this.history.canRedo);
+  }
+
+  // ---- Text ----
+
+  get typing(): boolean {
+    return this.text !== null;
+  }
+
+  /**
+   * Places the text caret at a cell: inside the open session's text it just
+   * moves the caret, otherwise it finishes that session and starts a new one.
+   */
+  startText(x: number, y: number): void {
+    const doc = this.doc();
+    if (!inBounds(doc, x, y)) return;
+    this.selection.set(null);
+    if (this.text?.placeCaretAt(x, y)) {
+      this.syncCaret();
+      return;
+    }
+    this.endText();
+    this.text = new TextSession(doc, x, y);
+    this.syncCaret();
+  }
+
+  /** Types or pastes text at the caret, replacing the selection if there is one. */
+  typeText(text: string): void {
+    if (this.selectionSize()) this.deleteSelection();
+    if (!this.text) return;
+    const ch = this.channels();
+    this.markCells(this.text.insert(text, { fg: ch.fg ? this.fg() : undefined, bg: ch.bg ? this.bg() : undefined }));
+    this.syncCaret();
+  }
+
+  textBackspace(): void {
+    if (this.deleteSelection()) return;
+    if (!this.text) return;
+    this.markCells(this.text.backspace());
+    this.syncCaret();
+  }
+
+  textDelete(): void {
+    if (this.deleteSelection()) return;
+    if (!this.text) return;
+    this.markCells(this.text.deleteForward());
+    this.syncCaret();
+  }
+
+  /** Arrow keys etc. A selection collapses to its start (left/up/home) or end. */
+  moveTextCaret(move: CaretMove): void {
+    const r = selectionRange(this.selection());
+    if (r) {
+      const toEnd = move === 'right' || move === 'down' || move === 'end';
+      this.placeCaretAtIndex(toEnd ? r[1] : r[0]);
+      return;
+    }
+    if (!this.text) return;
+    this.text.moveCaret(move);
+    this.syncCaret();
+  }
+
+  /** Finishes the open text session, recording it as one undo step. */
+  endText(): void {
+    if (!this.text) return;
+    const entry = this.text.finish();
+    this.text = null;
+    this.textCaret.set(null);
+    if (entry) {
+      this.history.push(entry);
+      this.syncHistory();
+    }
+  }
+
+  // ---- Text selection ----
+
+  /** Mouse drag: selects every cell from one cell to another, inclusive. */
+  selectCellRange(anchor: CellPos, focus: CellPos): void {
+    this.endText();
+    this.selection.set(selectCells(this.clampIndex(anchor), this.clampIndex(focus)));
+  }
+
+  /** Shift+click: extends the selection (or a new one from the caret) to include a cell. */
+  extendSelectionToCell(cell: CellPos): void {
+    const anchor = this.selection()?.anchor ?? this.caretIndex();
+    if (anchor === null) return;
+    const i = this.clampIndex(cell);
+    this.endText();
+    this.selection.set(i >= anchor ? { anchor, focus: i + 1 } : { anchor, focus: i });
+  }
+
+  /** Shift+arrow keys. */
+  extendSelection(move: CaretMove): void {
+    const sel = this.selection() ?? (() => {
+      const c = this.caretIndex();
+      return c === null ? null : { anchor: c, focus: c };
+    })();
+    if (!sel) return;
+    const next = moveFocus(sel, move, this.doc());
+    if (next.anchor === next.focus) {
+      this.placeCaretAtIndex(next.focus);
+      return;
+    }
+    this.endText();
+    this.selection.set(next);
+  }
+
+  selectAll(): void {
+    const doc = this.doc();
+    this.endText();
+    this.selection.set({ anchor: 0, focus: doc.width * doc.height });
+  }
+
+  selectWordAt(x: number, y: number): void {
+    const doc = this.doc();
+    if (!inBounds(doc, x, y)) return;
+    this.endText();
+    this.selection.set(wordAt(doc, x, y));
+  }
+
+  /** The selection as plain text (rows joined by newlines), or null if nothing is selected. */
+  selectedText(): string | null {
+    const r = selectionRange(this.selection());
+    return r && selectedText(this.doc(), r[0], r[1]);
+  }
+
+  /**
+   * Blanks the selected characters (colors are kept; nothing shifts) and puts
+   * the caret where the selection started. Text typed next joins the same
+   * undo step. Returns false if nothing was selected.
+   */
+  deleteSelection(): boolean {
+    const r = selectionRange(this.selection());
+    if (!r) return false;
+    const doc = this.doc();
+    this.endText();
+    this.selection.set(null);
+    this.text = new TextSession(doc, r[0] % doc.width, Math.floor(r[0] / doc.width));
+    const cells = Array.from({ length: r[1] - r[0] }, (_, k) => r[0] + k);
+    this.markCells(this.text.clearCells(cells));
+    this.syncCaret();
+    return true;
+  }
+
+  /** Clears the selection and finishes typing (Esc). */
+  clearSelection(): void {
+    this.selection.set(null);
+    this.endText();
+  }
+
+  /** Caret position as a linear boundary index, from the open text session. */
+  private caretIndex(): number | null {
+    const c = this.textCaret();
+    if (!c) return null;
+    const doc = this.doc();
+    return Math.min(doc.width * doc.height, Math.max(0, c.y * doc.width + c.x));
+  }
+
+  private placeCaretAtIndex(i: number): void {
+    const doc = this.doc();
+    const cell = Math.min(i, doc.width * doc.height - 1);
+    this.selection.set(null);
+    this.endText();
+    this.startText(cell % doc.width, Math.floor(cell / doc.width));
+  }
+
+  private clampIndex(p: CellPos): number {
+    const doc = this.doc();
+    const x = Math.min(doc.width - 1, Math.max(0, p.x));
+    const y = Math.min(doc.height - 1, Math.max(0, p.y));
+    return y * doc.width + x;
+  }
+
+  private syncCaret(): void {
+    const t = this.text;
+    this.textCaret.set(t && { ...t.caretPos, x0: t.x0, y0: t.y0, rows: t.rows });
+  }
+
+  // ---- Tool settings ----
+
+  setChar(ch: string): void {
+    const c = [...ch][0];
+    if (c && c.length === 1 && c >= ' ') this.ch.set(c); // single UTF-16 unit, printable
+  }
+
+  toggleChannel(channel: keyof Channels): void {
+    this.channels.update((c) => ({ ...c, [channel]: !c[channel] }));
+  }
+
+  setBrushSize(size: number): void {
+    this.brushSize.set(Math.min(MAX_BRUSH_SIZE, Math.max(1, Math.round(size) || 1)));
+  }
+
+  swapColors(): void {
+    const fg = this.fg();
+    this.fg.set(this.bg());
+    this.bg.set(fg);
+  }
+
+  resetColors(): void {
+    this.fg.set(WHITE);
+    this.bg.set(BLACK);
+  }
+
+  // ---- View ----
+
+  setZoom(zoom: number): void {
+    this.zoom.set(Math.min(ZOOM_LEVELS.at(-1)!, Math.max(ZOOM_LEVELS[0], zoom)));
+  }
+
+  zoomIn(): void {
+    const z = this.zoom();
+    this.setZoom(ZOOM_LEVELS.find((l) => l > z) ?? z);
+  }
+
+  zoomOut(): void {
+    const z = this.zoom();
+    this.setZoom([...ZOOM_LEVELS].reverse().find((l) => l < z) ?? z);
+  }
+
+  toggleGrid(): void {
+    this.showGrid.update((g) => !g);
+  }
+}

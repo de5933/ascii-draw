@@ -1,0 +1,11 @@
+A feature-rich editor for making ASCII art in the web browser.
+Also allow opening pngs, jpegs, etc.
+Implement tools like paint brushes, pencils, paint bucket, line art, shapes, etc.
+Every pixel has a foreground color, a background color, and a character.
+The doc as a whole has a single font face.
+Every supported font face has a config that says what brightness each character is (like we did in ascii_art).
+
+When opening an image, offer to scale it down. Default: 100px wide
+Each pixel in the imported image starts with a black background color and a "@" character with the foreground color taken from the corresponding picture in the source image (after scaling down).
+
+Like most image editors, there is a brush tool and an eraser tool that edits the fg color, bg color, and character. Each of these three properties is independent for now. Allow the user to select specific fg and bg colors as well as a specific character. Later we will add things like image manipulation, contrast and hsl sliders, and paint bucket tools. 

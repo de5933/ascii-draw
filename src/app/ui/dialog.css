@@ -1,0 +1,42 @@
+dialog {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  color: var(--text);
+  padding: 20px 24px;
+  min-width: 280px;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+
+h2 {
+  margin: 0 0 16px;
+  font-size: 1.1rem;
+}
+
+label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+input,
+select {
+  width: 140px;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}

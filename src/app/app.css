@@ -1,0 +1,57 @@
+:host {
+  display: grid;
+  grid-template:
+    'toolbar toolbar' auto
+    'panel canvas' 1fr
+    'status status' auto
+    / auto 1fr;
+  height: 100vh;
+}
+
+app-toolbar {
+  grid-area: toolbar;
+}
+
+app-tool-panel {
+  grid-area: panel;
+  min-height: 0;
+}
+
+app-canvas-view {
+  grid-area: canvas;
+}
+
+app-status-bar {
+  grid-area: status;
+}
+
+.drop-overlay {
+  position: fixed;
+  inset: 12px;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: 12px;
+  background: rgb(76 141 255 / 0.12);
+  font-size: 1.3rem;
+  pointer-events: none;
+}
+
+.notice {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 14px;
+  background: var(--panel-bg);
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.4);
+}
+
+.notice button {
+  padding: 0 8px;
+}
