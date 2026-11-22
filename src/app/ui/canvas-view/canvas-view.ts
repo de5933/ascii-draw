@@ -277,7 +277,7 @@ export class CanvasView {
 
   /** Ctrl+V outside a text field: switch to the text tool and paste at the pointer (or top-left). */
   protected onWindowPaste(e: ClipboardEvent): void {
-    if (e.defaultPrevented || isTypingTarget(e.target)) return;
+    if (e.defaultPrevented || isTypingTarget(e.target) || dialogOpen()) return;
     const text = e.clipboardData?.getData('text/plain');
     if (!text) return;
     e.preventDefault();
@@ -301,14 +301,14 @@ export class CanvasView {
 
   /** Copy/cut while focus is elsewhere (e.g. after clicking a panel button) but text is selected. */
   protected onWindowCopy(e: ClipboardEvent, cut: boolean): void {
-    if (e.defaultPrevented || isTypingTarget(e.target) || !this.store.selectionSize()) return;
+    if (e.defaultPrevented || isTypingTarget(e.target) || dialogOpen() || !this.store.selectionSize()) return;
     this.onCopy(e, cut);
     this.focusTextInput();
   }
 
   /** Ctrl+A anywhere outside a text field: switch to the text tool and select the whole image. */
   protected onWindowKeydown(e: KeyboardEvent): void {
-    if (isTypingTarget(e.target) || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'a') return;
+    if (isTypingTarget(e.target) || dialogOpen() || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'a') return;
     e.preventDefault();
     this.store.setTool('text');
     this.store.selectAll();
@@ -458,6 +458,11 @@ function drawFootprint(
   ctx.lineWidth = 1;
   ctx.strokeStyle = eraser ? 'rgb(255 140 140)' : 'rgb(255 255 255)';
   ctx.stroke();
+}
+
+/** A modal dialog is up: the page behind it shouldn't react to keys or the clipboard. */
+export function dialogOpen(): boolean {
+  return document.querySelector('dialog[open]') !== null;
 }
 
 export function isTypingTarget(target: EventTarget | null): boolean {

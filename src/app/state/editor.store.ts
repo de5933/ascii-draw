@@ -1,4 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
+import { AdjustLayers, AdjustSession, Adjustments } from '../core/adjust';
 import { BLACK, PackedColor, WHITE } from '../core/color';
 import { AsciiDoc, createDoc, getCell, inBounds } from '../core/document';
 import { DEFAULT_FONT_ID, getFont, glyphsFor, nearestWeight } from '../core/fonts/fonts';
@@ -82,6 +83,7 @@ export class EditorStore {
   private readonly history = new History();
   private stroke: Stroke | null = null;
   private text: TextSession | null = null;
+  private adjust: AdjustSession | null = null;
   private dirty = new Set<number>();
 
   // ---- Document ----
@@ -153,6 +155,7 @@ export class EditorStore {
   }
 
   beginStroke(x: number, y: number): void {
+    if (this.adjust) return;
     this.endText();
     this.stroke = new Stroke(this.doc(), this.tool(), this.paintSettings());
     this.markCells(this.stroke.to(x, y));
@@ -186,7 +189,7 @@ export class EditorStore {
   }
 
   undo(): void {
-    if (this.stroke) return;
+    if (this.stroke || this.adjust) return;
     this.endText();
     const cells = this.history.undo(this.doc());
     if (cells) this.markCells(cells);
@@ -194,11 +197,61 @@ export class EditorStore {
   }
 
   redo(): void {
-    if (this.stroke) return;
+    if (this.stroke || this.adjust) return;
     this.endText();
     const cells = this.history.redo(this.doc());
     if (cells) this.markCells(cells);
     this.syncHistory();
+  }
+
+  // ---- Adjustments ----
+
+  /**
+   * Starts a live-preview adjustment of the selected cells (when `selectionOnly`
+   * and there is a selection) or the whole image. Returns how many cells it covers.
+   */
+  beginAdjust(selectionOnly: boolean): number {
+    if (this.adjust) this.cancelAdjust();
+    this.endText();
+    const r = selectionOnly ? selectionRange(this.selection()) : null;
+    const indices = r ? Uint32Array.from({ length: r[1] - r[0] }, (_, k) => r[0] + k) : undefined;
+    this.adjust = new AdjustSession(this.doc(), indices);
+    return this.adjust.indices.length;
+  }
+
+  previewAdjust(a: Adjustments, layers: AdjustLayers): void {
+    if (!this.adjust) return;
+    this.adjust.preview(a, layers, this.glyphs());
+    this.markAdjusted();
+  }
+
+  /** Keeps the previewed result as one undo step. */
+  commitAdjust(): void {
+    if (!this.adjust) return;
+    const entry = this.adjust.finish();
+    this.adjust = null;
+    if (entry) {
+      this.history.push(entry);
+      this.syncHistory();
+    }
+  }
+
+  cancelAdjust(): void {
+    if (!this.adjust) return;
+    this.adjust.cancel();
+    this.markAdjusted();
+    this.adjust = null;
+  }
+
+  get adjusting(): boolean {
+    return this.adjust !== null;
+  }
+
+  private markAdjusted(): void {
+    if (!this.adjust) return;
+    // A full redraw is cheaper than tracking every cell of the image.
+    if (this.adjust.wholeDoc) this.markDocChanged();
+    else this.markCells(this.adjust.indices);
   }
 
   private syncHistory(): void {

@@ -198,4 +198,24 @@ describe('EditorStore', () => {
       expect(store.fontWeight()).toBe(700);
     });
   });
+  it('adjusts the selection or the whole image with live preview and one undo step', () => {
+    store.newDoc(4, 1, store.doc().fontId);
+    const doc = store.doc();
+    const layers = { fg: true, bg: false, ch: false };
+    const dark = { brightness: -100, contrast: 0, hue: 0, saturation: 0, lightness: 0 };
+    store.selectCellRange({ x: 1, y: 0 }, { x: 2, y: 0 });
+    expect(store.beginAdjust(true)).toBe(2);
+    store.previewAdjust(dark, layers);
+    expect([...doc.fg].map((c) => c === 0xff)).toEqual([false, true, true, false]);
+    store.cancelAdjust();
+    expect(doc.fg.every((c) => c === 0xffffffff)).toBe(true);
+
+    expect(store.beginAdjust(false)).toBe(4);
+    store.previewAdjust(dark, layers);
+    store.commitAdjust();
+    expect(doc.fg.every((c) => c === 0xff)).toBe(true);
+    expect(store.canUndo()).toBe(true);
+    store.undo();
+    expect(doc.fg.every((c) => c === 0xffffffff)).toBe(true);
+  });
 });

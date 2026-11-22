@@ -1,6 +1,7 @@
 import { Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { EditorStore } from './state/editor.store';
-import { CanvasView, isTypingTarget } from './ui/canvas-view/canvas-view';
+import { AdjustDialog } from './ui/adjust-dialog/adjust-dialog';
+import { CanvasView, dialogOpen, isTypingTarget } from './ui/canvas-view/canvas-view';
 import { ExportDialog } from './ui/export-dialog/export-dialog';
 import { ImportDialog } from './ui/import-dialog/import-dialog';
 import { NewDocDialog } from './ui/new-doc-dialog/new-doc-dialog';
@@ -10,15 +11,18 @@ import { Toolbar } from './ui/toolbar/toolbar';
 
 @Component({
   selector: 'app-root',
-  imports: [Toolbar, ToolPanel, CanvasView, StatusBar, NewDocDialog, ImportDialog, ExportDialog],
+  imports: [Toolbar, ToolPanel, CanvasView, StatusBar, NewDocDialog, ImportDialog, ExportDialog, AdjustDialog],
   template: `
-    <app-toolbar (newDoc)="newDocDialog().open()" (openImage)="fileInput.click()" (export)="exportDialog().open()" />
+    <app-toolbar (newDoc)="newDocDialog().open()" (openImage)="fileInput.click()" (export)="exportDialog().open()"
+      (adjust)="adjustDialog().open()"
+    />
     <app-tool-panel />
     <app-canvas-view />
     <app-status-bar />
     <app-new-doc-dialog />
     <app-import-dialog />
     <app-export-dialog />
+    <app-adjust-dialog />
     <input #fileInput type="file" accept="image/*" hidden (change)="onFilePicked(fileInput)" />
     @if (dragging()) {
       <div class="drop-overlay">Drop an image to import it</div>
@@ -43,6 +47,7 @@ export class App {
   protected readonly newDocDialog = viewChild.required(NewDocDialog);
   private readonly importDialog = viewChild.required(ImportDialog);
   protected readonly exportDialog = viewChild.required(ExportDialog);
+  protected readonly adjustDialog = viewChild.required(AdjustDialog);
   private readonly toolPanel = viewChild.required(ToolPanel);
   private readonly fileInput = viewChild.required<ElementRef<HTMLInputElement>>('fileInput');
   protected readonly dragging = signal(false);
@@ -82,12 +87,20 @@ export class App {
   }
 
   protected onKeydown(e: KeyboardEvent): void {
-    if (isTypingTarget(e.target)) return;
+    if (dialogOpen()) return;
     const key = e.key.toLowerCase();
-    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+    const ctrl = (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
+    // Not text-editing keys, so these work even while typing.
+    if (ctrl && (key === 'o' || key === 'e' || key === 'u')) {
+      e.preventDefault();
       if (key === 'o') this.fileInput().nativeElement.click();
       else if (key === 'e') this.exportDialog().open();
-      else if (key === 'z' && !e.shiftKey) this.store.undo();
+      else this.adjustDialog().open();
+      return;
+    }
+    if (isTypingTarget(e.target)) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      if (key === 'z' && !e.shiftKey) this.store.undo();
       else if ((key === 'z' && e.shiftKey) || key === 'y') this.store.redo();
       else return;
       e.preventDefault();

@@ -12,6 +12,9 @@ import { EditorStore } from '../../state/editor.store';
       Open image…
     </button>
     <button type="button" (click)="export.emit()" title="Export as PNG or text (Ctrl+E)">Export…</button>
+    <button type="button" (click)="adjust.emit()" title="Brightness, contrast, hue, saturation, lightness (Ctrl+U)">
+      Adjust…
+    </button>
     <span class="sep"></span>
     <label class="field">
       Font
@@ -49,6 +52,7 @@ export class Toolbar {
   readonly newDoc = output<void>();
   readonly openImage = output<void>();
   readonly export = output<void>();
+  readonly adjust = output<void>();
   protected readonly fonts = FONTS;
 
   protected weightName(w: number): string {

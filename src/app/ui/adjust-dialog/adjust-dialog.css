@@ -1,0 +1,49 @@
+/* Docked at the side with no dimming, so the canvas preview stays visible. */
+dialog.adjust {
+  margin: 56px 16px auto auto;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+}
+
+dialog.adjust::backdrop {
+  background: transparent;
+}
+
+.slider {
+  display: grid;
+  grid-template-columns: 80px 1fr 52px 10px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.slider label {
+  display: block;
+  margin: 0;
+}
+
+.slider input[type='range'] {
+  width: 100%;
+  min-width: 0;
+}
+
+.slider input.num {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.unit {
+  color: var(--text-muted);
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 12px 0;
+}
+
+.actions .spacer {
+  flex: 1;
+}
