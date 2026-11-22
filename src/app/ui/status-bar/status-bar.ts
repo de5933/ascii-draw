@@ -8,7 +8,9 @@ import { EditorStore } from '../../state/editor.store';
     <span>{{ store.doc().width }} × {{ store.doc().height }}</span>
     <span>{{ store.font().name }} {{ weightName() }}</span>
     <span>{{ store.zoom() * 100 }}%</span>
-    @if (store.selectionSize(); as n) {
+    @if (store.rect(); as r) {
+      <span>{{ r.width }} × {{ r.height }} selected</span>
+    } @else if (store.selectionSize(); as n) {
       <span>{{ n }} selected</span>
     }
     <span class="pos">

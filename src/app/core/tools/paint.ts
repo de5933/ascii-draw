@@ -3,7 +3,7 @@ import { AsciiDoc, Cell, DEFAULT_CELL, cellIndex, inBounds, setCell } from '../d
 import { EditRecorder } from '../history';
 import { BrushShape, Point, brushOffsets, lineCells } from '../raster';
 
-export type ToolId = 'brush' | 'eraser' | 'text';
+export type ToolId = 'brush' | 'eraser' | 'text' | 'select';
 
 /** Which cell properties a tool writes. Each is independent. */
 export interface Channels {

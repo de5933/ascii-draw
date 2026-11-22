@@ -218,4 +218,26 @@ describe('EditorStore', () => {
     store.undo();
     expect(doc.fg.every((c) => c === 0xffffffff)).toBe(true);
   });
+  it('copies, cuts, pastes and deletes rectangles as undo steps', () => {
+    store.newDoc(4, 2, 'jetbrains-mono');
+    const doc = store.doc();
+    store.setTool('select');
+    store.selectRect({ x: 0, y: 0 }, { x: 1, y: 0 });
+    doc.ch.set([65, 66], 0);
+    store.setCopyLayer('fg', false);
+    store.setCopyLayer('bg', false);
+    expect(store.copyRect()?.text).toBe('AB');
+    expect(store.pasteTargets()).toEqual({ fg: false, bg: false, ch: true });
+    store.paste({ x: 2, y: 1 });
+    expect(String.fromCharCode(...doc.ch.subarray(4))).toBe('  AB');
+    expect(store.rect()).toEqual({ x: 2, y: 1, width: 2, height: 1 });
+    expect(store.deleteRect()).toBe(true);
+    expect(String.fromCharCode(...doc.ch.subarray(4))).toBe('    ');
+    store.undo();
+    store.undo();
+    expect(String.fromCharCode(...doc.ch.subarray(4))).toBe('    ');
+    store.setTool('brush');
+    expect(store.rect()).toBeNull();
+  });
+
 });

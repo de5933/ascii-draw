@@ -1,5 +1,6 @@
 import { Component, ElementRef, computed, inject, viewChild } from '@angular/core';
 import { fromHex, toCss, toHex } from '../../core/color';
+import { Layer, canPasteInto, clipLayers, describeClip } from '../../core/tools/clip';
 import { Channels } from '../../core/tools/paint';
 import { EditorStore, MAX_BRUSH_SIZE } from '../../state/editor.store';
 
@@ -9,7 +10,7 @@ import { EditorStore, MAX_BRUSH_SIZE } from '../../state/editor.store';
   template: `
     <section>
       <h3>Tool</h3>
-      <div class="row">
+      <div class="tools">
         <button type="button" [class.active]="store.tool() === 'brush'" (click)="store.setTool('brush')" title="Brush (B)">
           Brush
         </button>
@@ -19,6 +20,9 @@ import { EditorStore, MAX_BRUSH_SIZE } from '../../state/editor.store';
         <button type="button" [class.active]="store.tool() === 'text'" (click)="store.setTool('text')" title="Text (T)">
           Text
         </button>
+        <button type="button" [class.active]="store.tool() === 'select'" (click)="store.setTool('select')" title="Select (M)">
+          Select
+        </button>
       </div>
       @if (store.tool() === 'text') {
         <p class="muted small">
@@ -27,9 +31,61 @@ import { EditorStore, MAX_BRUSH_SIZE } from '../../state/editor.store';
           and paste. Esc finishes.
         </p>
       }
+      @if (store.tool() === 'select') {
+        <p class="muted small">
+          Drag a rectangle; hold Ctrl for a square. Ctrl+A selects all. Ctrl+C / X / V copy, cut and
+          paste (at the pointer, else the selection); Delete clears. Esc deselects.
+        </p>
+      }
     </section>
 
-    @if (store.tool() !== 'text') {
+    @if (store.tool() === 'select') {
+      <section>
+        <h3>Copy, cut &amp; delete</h3>
+        <div class="checks">
+          @for (l of layerList; track l.key) {
+            <label>
+              <input type="checkbox" [checked]="store.copyLayers()[l.key]" (change)="store.setCopyLayer(l.key, $any($event.target).checked)" />
+              {{ l.label }}
+            </label>
+          }
+        </div>
+        <div class="row actions">
+          <button type="button" [disabled]="!canCopy()" (click)="copy(false)" title="Copy (Ctrl+C)">Copy</button>
+          <button type="button" [disabled]="!canCopy()" (click)="copy(true)" title="Cut (Ctrl+X)">Cut</button>
+          <button type="button" [disabled]="!canCopy()" (click)="store.deleteRect()" title="Delete (Del)">Delete</button>
+        </div>
+      </section>
+      <section>
+        <h3>Paste into</h3>
+        @if (store.clipboard(); as clip) {
+          <p class="muted small clip">{{ clipLabel() }}</p>
+          <div class="checks">
+            @for (l of layerList; track l.key) {
+              <label [class.disabled]="!pasteAllowed(l.key)">
+                <input
+                  type="checkbox"
+                  [checked]="store.pasteTargets()[l.key] && pasteAllowed(l.key)"
+                  [disabled]="!pasteAllowed(l.key)"
+                  (change)="store.setPasteTarget(l.key, $any($event.target).checked)"
+                />
+                {{ l.label }}
+              </label>
+            }
+          </div>
+          @if (single()) {
+            <p class="muted small">One layer was copied, so it can go into any layers. Color into text picks characters by brightness.</p>
+          }
+          <div class="row actions">
+            <button type="button" (click)="pasteHere()" title="Paste (Ctrl+V)">Paste</button>
+          </div>
+        } @else {
+          <p class="muted small">Nothing copied yet.</p>
+        }
+      </section>
+    }
+
+    @if (store.tool() !== 'text' && store.tool() !== 'select') {
     <section>
       <h3>Size <span class="muted">{{ store.brushSize() }}</span></h3>
       <input
@@ -52,6 +108,7 @@ import { EditorStore, MAX_BRUSH_SIZE } from '../../state/editor.store';
     </section>
     }
 
+    @if (store.tool() !== 'select') {
     <section>
       <h3>Affects</h3>
       <div class="row">
@@ -69,6 +126,7 @@ import { EditorStore, MAX_BRUSH_SIZE } from '../../state/editor.store';
         }
       </div>
     </section>
+    }
 
     <section>
       <h3>Colors</h3>
@@ -135,6 +193,36 @@ export class ToolPanel {
   protected readonly fgCss = computed(() => toCss(this.store.fg()));
   protected readonly bgCss = computed(() => toCss(this.store.bg()));
   protected readonly glyphs = this.store.glyphs;
+  protected readonly layerList: { key: Layer; label: string }[] = [
+    { key: 'fg', label: 'Foreground color' },
+    { key: 'bg', label: 'Background color' },
+    { key: 'ch', label: 'Text' },
+  ];
+  protected readonly canCopy = computed(() => !!this.store.rect() && Object.values(this.store.copyLayers()).some(Boolean));
+  protected readonly single = computed(() => {
+    const clip = this.store.clipboard();
+    return !!clip && clipLayers(clip).length === 1;
+  });
+  protected readonly clipLabel = computed(() => {
+    const clip = this.store.clipboard();
+    return clip ? `Clipboard ${describeClip(clip)}` : '';
+  });
+
+  protected pasteAllowed(layer: Layer): boolean {
+    const clip = this.store.clipboard();
+    return !!clip && canPasteInto(clip, layer);
+  }
+
+  /** Panel buttons: the cells go to our clipboard; the text (if any) to the system one too. */
+  protected copy(cut: boolean): void {
+    const clip = cut ? this.store.cutRect() : this.store.copyRect();
+    if (clip) navigator.clipboard?.writeText(clip.text).catch(() => {});
+  }
+
+  protected pasteHere(): void {
+    const r = this.store.rect();
+    this.store.paste(r ? { x: r.x, y: r.y } : { x: 0, y: 0 });
+  }
 
   focusCharInput(): void {
     this.charInput().nativeElement.focus();

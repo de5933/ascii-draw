@@ -129,7 +129,7 @@ export class AdjustDialog {
     if (this.dialogEl().nativeElement.open) return;
     this.values.set({ ...NO_ADJUSTMENTS });
     this.store.endText();
-    this.selectionCells.set(this.store.selectionSize());
+    this.selectionCells.set(this.store.selectedCellCount());
     this.selectionOnly.set(this.selectionCells() > 0);
     this.store.beginAdjust(this.selectionOnly());
     this.dialogEl().nativeElement.showModal();

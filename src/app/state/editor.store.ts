@@ -3,9 +3,23 @@ import { AdjustLayers, AdjustSession, Adjustments } from '../core/adjust';
 import { BLACK, PackedColor, WHITE } from '../core/color';
 import { AsciiDoc, createDoc, getCell, inBounds } from '../core/document';
 import { DEFAULT_FONT_ID, getFont, glyphsFor, nearestWeight } from '../core/fonts/fonts';
-import { History } from '../core/history';
+import { EditRecorder, HistoryEntry, History } from '../core/history';
 import { BrushShape } from '../core/raster';
 import { Channels, PaintSettings, Stroke, ToolId } from '../core/tools/paint';
+import {
+  ALL_LAYERS,
+  CellClip,
+  Layer,
+  Layers,
+  Rect,
+  canPasteInto,
+  clearRect,
+  copyRect,
+  defaultPasteTargets,
+  pasteClip,
+  rectFromCells,
+  rectIndices,
+} from '../core/tools/clip';
 import { TextSelection, moveFocus, selectCells, selectedText, selectionRange, wordAt } from '../core/tools/selection';
 import { CaretMove, TextSession } from '../core/tools/text';
 
@@ -64,6 +78,20 @@ export class EditorStore {
     return r ? r[1] - r[0] : 0;
   });
 
+  /** Rectangular selection (select tool), or null. */
+  readonly rect = signal<Rect | null>(null);
+  /** Layers that copy, cut and delete act on. */
+  readonly copyLayers = signal<Layers>({ ...ALL_LAYERS });
+  /** The last cells copied or cut (or text pasted from outside). */
+  readonly clipboard = signal<CellClip | null>(null);
+  /** Layers a paste writes; reset to the clip's own layers whenever the clipboard changes. */
+  readonly pasteTargets = signal<Layers>({ ...ALL_LAYERS });
+  /** Cells covered by either kind of selection. */
+  readonly selectedCellCount = computed(() => {
+    const r = this.rect();
+    return r ? r.width * r.height : this.selectionSize();
+  });
+
   readonly canUndo = signal(false);
   readonly canRedo = signal(false);
 
@@ -103,6 +131,7 @@ export class EditorStore {
     this.text = null;
     this.textCaret.set(null);
     this.selection.set(null);
+    this.rect.set(null);
     this.history.clear();
     this.syncHistory();
     this.dirty.clear();
@@ -151,6 +180,7 @@ export class EditorStore {
       this.endText();
       this.selection.set(null);
     }
+    if (tool !== 'select') this.rect.set(null);
     this.tool.set(tool);
   }
 
@@ -204,6 +234,86 @@ export class EditorStore {
     this.syncHistory();
   }
 
+  // ---- Rectangular selection and cell clipboard ----
+
+  /** Selects the rectangle between two cells (inclusive), clipped to the document. */
+  selectRect(a: CellPos, b: CellPos): void {
+    this.rect.set(rectFromCells(a, b, this.doc()));
+  }
+
+  selectAllRect(): void {
+    const d = this.doc();
+    this.rect.set({ x: 0, y: 0, width: d.width, height: d.height });
+  }
+
+  clearRect(): void {
+    this.rect.set(null);
+  }
+
+  setCopyLayer(layer: Layer, on: boolean): void {
+    this.copyLayers.update((l) => ({ ...l, [layer]: on }));
+  }
+
+  setPasteTarget(layer: Layer, on: boolean): void {
+    const clip = this.clipboard();
+    if (clip && !canPasteInto(clip, layer)) return;
+    this.pasteTargets.update((l) => ({ ...l, [layer]: on }));
+  }
+
+  /** Makes a clip the clipboard; paste targets go back to its own layers. */
+  setClipboard(clip: CellClip): void {
+    this.clipboard.set(clip);
+    this.pasteTargets.set(defaultPasteTargets(clip));
+  }
+
+  /** Copies the chosen layers of the selected rectangle. Returns the clip, or null. */
+  copyRect(): CellClip | null {
+    const r = this.rect();
+    if (!r) return null;
+    const clip = copyRect(this.doc(), r, this.copyLayers());
+    if (clip) this.setClipboard(clip);
+    return clip;
+  }
+
+  cutRect(): CellClip | null {
+    const clip = this.copyRect();
+    if (clip) this.deleteRect();
+    return clip;
+  }
+
+  /** Blanks the chosen layers of the selected rectangle (one undo step). */
+  deleteRect(): boolean {
+    const r = this.rect();
+    if (!r || this.adjust || this.stroke) return false;
+    this.endText();
+    const rec = new EditRecorder(this.doc());
+    this.markCells(clearRect(this.doc(), r, this.copyLayers(), (i) => rec.touch(i)));
+    this.pushHistory(rec.finish());
+    return true;
+  }
+
+  /**
+   * Pastes a clip (default: the clipboard) with its top-left at `at`, into the
+   * paste-target layers, as one undo step. The pasted area becomes the selection.
+   */
+  paste(at: CellPos, clip: CellClip | null = this.clipboard()): boolean {
+    if (!clip || this.adjust || this.stroke) return false;
+    this.endText();
+    const doc = this.doc();
+    const rec = new EditRecorder(doc);
+    const cells = pasteClip(doc, clip, at.x, at.y, this.pasteTargets(), this.glyphs(), (i) => rec.touch(i));
+    this.markCells(cells);
+    this.pushHistory(rec.finish());
+    this.rect.set(rectFromCells(at, { x: at.x + clip.width - 1, y: at.y + clip.height - 1 }, doc));
+    return cells.length > 0;
+  }
+
+  private pushHistory(entry: HistoryEntry | null): void {
+    if (!entry) return;
+    this.history.push(entry);
+    this.syncHistory();
+  }
+
   // ---- Adjustments ----
 
   /**
@@ -213,8 +323,13 @@ export class EditorStore {
   beginAdjust(selectionOnly: boolean): number {
     if (this.adjust) this.cancelAdjust();
     this.endText();
-    const r = selectionOnly ? selectionRange(this.selection()) : null;
-    const indices = r ? Uint32Array.from({ length: r[1] - r[0] }, (_, k) => r[0] + k) : undefined;
+    const rect = selectionOnly ? this.rect() : null;
+    const r = selectionOnly && !rect ? selectionRange(this.selection()) : null;
+    const indices = rect
+      ? rectIndices(this.doc(), rect)
+      : r
+        ? Uint32Array.from({ length: r[1] - r[0] }, (_, k) => r[0] + k)
+        : undefined;
     this.adjust = new AdjustSession(this.doc(), indices);
     return this.adjust.indices.length;
   }

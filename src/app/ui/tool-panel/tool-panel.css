@@ -150,3 +150,29 @@ input[type='range'] {
 .glyphs button.active {
   background: var(--accent);
 }
+
+.checks label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  font-size: 0.85rem;
+}
+
+.checks label.disabled {
+  color: var(--text-muted);
+}
+
+.actions {
+  margin-top: 8px;
+}
+
+.clip {
+  margin: 0 0 6px;
+}
+
+.tools {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}

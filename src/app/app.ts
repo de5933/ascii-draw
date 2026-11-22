@@ -164,6 +164,18 @@ export class App {
       case 'T':
         this.store.setTool('text');
         break;
+      case 'm':
+      case 'M':
+        this.store.setTool('select');
+        break;
+      case 'Delete':
+      case 'Backspace':
+        if (this.store.tool() !== 'select' || !this.store.deleteRect()) return;
+        break;
+      case 'Escape':
+        if (this.store.tool() !== 'select' || !this.store.rect()) return;
+        this.store.clearRect();
+        break;
       case 'c':
       case 'C':
         this.toolPanel().focusCharInput();

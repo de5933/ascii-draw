@@ -1,6 +1,7 @@
 import { Component, ElementRef, afterNextRender, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { loadFont } from '../../core/fonts/fonts';
 import { brushOffsets } from '../../core/raster';
+import { CellClip, Rect, clipFromText, squareFocus } from '../../core/tools/clip';
 import { TextSelection, selectionRange } from '../../core/tools/selection';
 import { CaretMove, MAX_PASTE } from '../../core/tools/text';
 import { CanvasRenderer, CellSize } from '../../core/renderer';
@@ -22,6 +23,7 @@ import { CellPos, EditorStore, TextCaret } from '../../state/editor.store';
       [class.panning]="panning()"
       [class.pan-ready]="spaceHeld()"
       [class.text-tool]="store.tool() === 'text'"
+      [class.select-tool]="store.tool() === 'select'"
       (wheel)="onWheel($event)"
       (pointerdown)="onPointerDown($event)"
       (pointermove)="onPointerMove($event)"
@@ -80,6 +82,10 @@ export class CanvasView {
   private panStart?: { x: number; y: number; left: number; top: number };
   /** Text tool drag in progress: a click places the caret, a drag selects. */
   private textDrag?: { anchor: CellPos; extend: boolean; moved: boolean };
+  /** Select tool drag in progress. */
+  private rectDrag?: { anchor: CellPos; moved: boolean };
+  /** Marks our own copies on the system clipboard, so a paste can use the full cell data. */
+  private clipToken = '';
 
   constructor() {
     afterNextRender(() => {
@@ -126,8 +132,9 @@ export class CanvasView {
       const tool = this.store.tool();
       const caret = this.store.textCaret();
       const selection = this.store.selection();
+      const rect = this.store.rect();
       if (!this.ready()) return;
-      untracked(() => this.drawCursor(pos, size, shape, tool, caret, selection));
+      untracked(() => this.drawCursor(pos, size, shape, tool, caret, selection, rect));
     });
 
     // Leave the hidden textarea when the text session ends (Esc, undo, tool change).
@@ -178,6 +185,11 @@ export class CanvasView {
       this.focusTextInput();
       return;
     }
+    if (this.store.tool() === 'select') {
+      vp.setPointerCapture(e.pointerId);
+      this.rectDrag = { anchor: pos, moved: false };
+      return;
+    }
     // Strokes may start just outside the doc; they're clipped per cell.
     vp.setPointerCapture(e.pointerId);
     this.store.beginStroke(pos.x, pos.y);
@@ -199,6 +211,14 @@ export class CanvasView {
         this.store.selectCellRange(d.anchor, pos);
       }
     }
+    if (this.rectDrag && pos && this.renderer) {
+      const d = this.rectDrag;
+      if (d.moved || pos.x !== d.anchor.x || pos.y !== d.anchor.y) {
+        d.moved = true;
+        const square = e.ctrlKey || e.metaKey;
+        this.store.selectRect(d.anchor, square ? squareFocus(d.anchor, pos, this.renderer.cellSize) : pos);
+      }
+    }
     if (this.store.stroking && pos) this.store.strokeTo(pos.x, pos.y);
     this.updateHover(pos);
   }
@@ -211,6 +231,8 @@ export class CanvasView {
       this.panStart = undefined;
     }
     if (this.store.stroking) this.store.endStroke();
+    if (this.rectDrag && !this.rectDrag.moved) this.store.clearRect(); // plain click deselects
+    this.rectDrag = undefined;
     const drag = this.textDrag;
     this.textDrag = undefined;
     if (drag && !drag.extend && !drag.moved) {
@@ -278,6 +300,16 @@ export class CanvasView {
   /** Ctrl+V outside a text field: switch to the text tool and paste at the pointer (or top-left). */
   protected onWindowPaste(e: ClipboardEvent): void {
     if (e.defaultPrevented || isTypingTarget(e.target) || dialogOpen()) return;
+    const ours = !!this.clipToken && e.clipboardData?.getData(CLIP_TYPE) === this.clipToken;
+    if (this.store.tool() === 'select' || (ours && !this.store.typing)) {
+      const clip = this.clipFromEvent(e, ours);
+      if (!clip) return;
+      e.preventDefault();
+      if (this.store.tool() !== 'select') this.store.setTool('select');
+      const r = this.store.rect();
+      this.store.paste(this.store.hoverCell() ?? (r ? { x: r.x, y: r.y } : { x: 0, y: 0 }), clip);
+      return;
+    }
     const text = e.clipboardData?.getData('text/plain');
     if (!text) return;
     e.preventDefault();
@@ -299,17 +331,56 @@ export class CanvasView {
     if (cut) this.store.deleteSelection();
   }
 
+  /**
+   * What a paste in the select tool pastes: our own copy (all its layers),
+   * else outside text (as a text-only clip), else the last internal copy.
+   */
+  private clipFromEvent(e: ClipboardEvent, ours: boolean): CellClip | null {
+    const current = this.store.clipboard();
+    if (ours && current) return current;
+    const text = e.clipboardData?.getData('text/plain');
+    if (text) {
+      if (current && current.text === text) return current;
+      const clip = clipFromText(text.slice(0, MAX_PASTE));
+      this.store.setClipboard(clip);
+      return clip;
+    }
+    return current;
+  }
+
   /** Copy/cut while focus is elsewhere (e.g. after clicking a panel button) but text is selected. */
   protected onWindowCopy(e: ClipboardEvent, cut: boolean): void {
-    if (e.defaultPrevented || isTypingTarget(e.target) || dialogOpen() || !this.store.selectionSize()) return;
+    if (e.defaultPrevented || isTypingTarget(e.target) || dialogOpen()) return;
+    if (this.store.tool() === 'select') {
+      if (!this.store.rect() || !e.clipboardData) return;
+      e.preventDefault();
+      const clip = cut ? this.store.cutRect() : this.store.copyRect();
+      if (clip) this.markSystemClipboard(e.clipboardData, clip);
+      return;
+    }
+    if (!this.store.selectionSize()) return;
     this.onCopy(e, cut);
     this.focusTextInput();
   }
 
-  /** Ctrl+A anywhere outside a text field: switch to the text tool and select the whole image. */
+  /** Puts a copy on the system clipboard: its text for other apps, plus our marker. */
+  private markSystemClipboard(data: DataTransfer, clip: CellClip): void {
+    this.clipToken = `ascii-draw:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    data.setData('text/plain', clip.text);
+    data.setData(CLIP_TYPE, this.clipToken);
+  }
+
+  /**
+   * Ctrl+A anywhere outside a text field: select the whole image (a rectangle
+   * with the select tool, otherwise switching to the text tool).
+   */
   protected onWindowKeydown(e: KeyboardEvent): void {
     if (isTypingTarget(e.target) || dialogOpen() || !(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 'a') return;
     e.preventDefault();
+    if (this.store.tool() === 'select') {
+      this.store.selectAllRect();
+      return;
+    }
     this.store.setTool('text');
     this.store.selectAll();
     this.focusTextInput();
@@ -371,6 +442,7 @@ export class CanvasView {
     tool: string,
     caret: TextCaret | null,
     selection: TextSelection | null,
+    rect: Rect | null,
   ): void {
     const ov = this.overlay().nativeElement;
     const ctx = ov.getContext('2d');
@@ -395,6 +467,11 @@ export class CanvasView {
       }
       return;
     }
+    if (tool === 'select') {
+      if (rect) drawRect(ctx, cell, rect);
+      else if (pos) drawFootprint(ctx, cell, pos, [{ x: 0, y: 0 }], false);
+      return;
+    }
     if (pos) drawFootprint(ctx, cell, pos, brushOffsets(size, shape), tool === 'eraser');
   }
 }
@@ -408,6 +485,24 @@ function drawSelection(ctx: CanvasRenderingContext2D, cell: CellSize, docWidth: 
     const x1 = Math.min(end, (row + 1) * docWidth) - row * docWidth;
     ctx.fillRect(x0 * w, row * h, (x1 - x0) * w, h);
   }
+}
+
+/** Rectangular selection: light tint and a black/white dashed border. */
+function drawRect(ctx: CanvasRenderingContext2D, cell: CellSize, r: Rect): void {
+  const x = r.x * cell.width + 0.5;
+  const y = r.y * cell.height + 0.5;
+  const w = r.width * cell.width - 1;
+  const h = r.height * cell.height - 1;
+  ctx.fillStyle = 'rgb(76 141 255 / 0.2)';
+  ctx.fillRect(x, y, w, h);
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+  ctx.strokeStyle = 'rgb(0 0 0)';
+  ctx.strokeRect(x, y, w, h);
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = 'rgb(255 255 255)';
+  ctx.strokeRect(x, y, w, h);
+  ctx.setLineDash([]);
 }
 
 /** Text caret bar, plus a faint guide at the left margin lines wrap back to. */
@@ -460,14 +555,19 @@ function drawFootprint(
   ctx.stroke();
 }
 
+/** Clipboard type marking our own copies. */
+const CLIP_TYPE = 'application/x-ascii-draw';
+
 /** A modal dialog is up: the page behind it shouldn't react to keys or the clipboard. */
 export function dialogOpen(): boolean {
   return document.querySelector('dialog[open]') !== null;
 }
 
+/** Inputs that aren't for typing, so shortcuts and the clipboard still reach the editor. */
+const NON_TYPING_INPUTS = new Set(['checkbox', 'radio', 'range', 'color', 'button', 'submit', 'reset', 'file', 'image']);
+
 export function isTypingTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
-  );
+  if (!(target instanceof HTMLElement)) return false;
+  if (target instanceof HTMLInputElement) return !NON_TYPING_INPUTS.has(target.type);
+  return target.isContentEditable || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
 }
