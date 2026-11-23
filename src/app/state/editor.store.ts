@@ -1,6 +1,7 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { AdjustLayers, AdjustSession, Adjustments } from '../core/adjust';
 import { BLACK, PackedColor, WHITE } from '../core/color';
+import { NoiseSettings } from '../core/noise';
 import { AsciiDoc, createDoc, getCell, inBounds } from '../core/document';
 import { DEFAULT_FONT_ID, getFont, glyphsFor, nearestWeight } from '../core/fonts/fonts';
 import { EditRecorder, HistoryEntry, History } from '../core/history';
@@ -337,6 +338,12 @@ export class EditorStore {
   previewAdjust(a: Adjustments, layers: AdjustLayers): void {
     if (!this.adjust) return;
     this.adjust.preview(a, layers, this.glyphs());
+    this.markAdjusted();
+  }
+
+  previewNoise(settings: NoiseSettings, layers: AdjustLayers): void {
+    if (!this.adjust) return;
+    this.adjust.previewNoise(settings, layers, this.glyphs());
     this.markAdjusted();
   }
 

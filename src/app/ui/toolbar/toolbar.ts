@@ -15,17 +15,16 @@ import { EditorStore } from '../../state/editor.store';
     <button type="button" (click)="adjust.emit()" title="Brightness, contrast, hue, saturation, lightness (Ctrl+U)">
       Adjust…
     </button>
+    <button type="button" (click)="noise.emit()" title="Add random noise">Noise…</button>
     <span class="sep"></span>
-    <label class="field">
-      Font
+    <label class="field" title="Document font">
       <select [value]="store.doc().fontId" (change)="store.setFont($any($event.target).value)" aria-label="Document font">
         @for (f of fonts; track f.id) {
           <option [value]="f.id" [selected]="f.id === store.doc().fontId">{{ f.name }}</option>
         }
       </select>
     </label>
-    <label class="field">
-      Weight
+    <label class="field" title="Document font weight">
       <select (change)="store.setFontWeight(+$any($event.target).value)" aria-label="Document font weight">
         @for (w of store.font().weights; track w) {
           <option [value]="w" [selected]="w === store.fontWeight()">{{ weightName(w) }}</option>
@@ -53,6 +52,7 @@ export class Toolbar {
   readonly openImage = output<void>();
   readonly export = output<void>();
   readonly adjust = output<void>();
+  readonly noise = output<void>();
   protected readonly fonts = FONTS;
 
   protected weightName(w: number): string {

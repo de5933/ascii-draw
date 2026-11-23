@@ -3,6 +3,7 @@ import { AsciiDoc } from './document';
 import { GlyphTable } from './fonts/fonts';
 import { HistoryEntry } from './history';
 import { brightnessToChar } from './import';
+import { NoiseSettings, charNoiser, noiseColor } from './noise';
 
 /** Slider values. All are -100..100 except hue, which is -180..180 degrees. */
 export interface Adjustments {
@@ -130,7 +131,7 @@ export function charMapper(glyphs: GlyphTable, a: Adjustments): (code: number) =
 }
 
 /**
- * Live-preview adjustments on a document (or some of its cells): each
+ * Live-preview adjustments (or noise) on a document (or some of its cells): each
  * preview recomputes from the original values; cancel restores them and
  * finish returns one undo entry.
  */
@@ -173,6 +174,18 @@ export class AdjustSession {
       doc.fg[i] = layers.fg && !identity ? color(orig.fg[k]) : orig.fg[k];
       doc.bg[i] = layers.bg && !identity ? color(orig.bg[k]) : orig.bg[k];
       doc.ch[i] = mapChar ? mapChar(orig.ch[k]) : orig.ch[k];
+    }
+  }
+
+  /** Writes noisy values into the document. Noise is keyed by cell, so the pattern doesn't depend on the selection. */
+  previewNoise(s: NoiseSettings, layers: AdjustLayers, glyphs: GlyphTable): void {
+    const { doc, indices, orig } = this;
+    const mapChar = layers.ch ? charNoiser(glyphs, s) : null;
+    for (let k = 0; k < indices.length; k++) {
+      const i = indices[k];
+      doc.fg[i] = layers.fg ? noiseColor(orig.fg[k], i, 'fg', s) : orig.fg[k];
+      doc.bg[i] = layers.bg ? noiseColor(orig.bg[k], i, 'bg', s) : orig.bg[k];
+      doc.ch[i] = mapChar ? mapChar(orig.ch[k], i) : orig.ch[k];
     }
   }
 

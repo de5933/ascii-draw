@@ -4,6 +4,7 @@ import { AdjustDialog } from './ui/adjust-dialog/adjust-dialog';
 import { CanvasView, dialogOpen, isTypingTarget } from './ui/canvas-view/canvas-view';
 import { ExportDialog } from './ui/export-dialog/export-dialog';
 import { ImportDialog } from './ui/import-dialog/import-dialog';
+import { NoiseDialog } from './ui/noise-dialog/noise-dialog';
 import { NewDocDialog } from './ui/new-doc-dialog/new-doc-dialog';
 import { StatusBar } from './ui/status-bar/status-bar';
 import { ToolPanel } from './ui/tool-panel/tool-panel';
@@ -11,10 +12,11 @@ import { Toolbar } from './ui/toolbar/toolbar';
 
 @Component({
   selector: 'app-root',
-  imports: [Toolbar, ToolPanel, CanvasView, StatusBar, NewDocDialog, ImportDialog, ExportDialog, AdjustDialog],
+  imports: [Toolbar, ToolPanel, CanvasView, StatusBar, NewDocDialog, ImportDialog, ExportDialog, AdjustDialog, NoiseDialog],
   template: `
     <app-toolbar (newDoc)="newDocDialog().open()" (openImage)="fileInput.click()" (export)="exportDialog().open()"
       (adjust)="adjustDialog().open()"
+      (noise)="noiseDialog().open()"
     />
     <app-tool-panel />
     <app-canvas-view />
@@ -23,6 +25,7 @@ import { Toolbar } from './ui/toolbar/toolbar';
     <app-import-dialog />
     <app-export-dialog />
     <app-adjust-dialog />
+    <app-noise-dialog />
     <input #fileInput type="file" accept="image/*" hidden (change)="onFilePicked(fileInput)" />
     @if (dragging()) {
       <div class="drop-overlay">Drop an image to import it</div>
@@ -48,6 +51,7 @@ export class App {
   private readonly importDialog = viewChild.required(ImportDialog);
   protected readonly exportDialog = viewChild.required(ExportDialog);
   protected readonly adjustDialog = viewChild.required(AdjustDialog);
+  protected readonly noiseDialog = viewChild.required(NoiseDialog);
   private readonly toolPanel = viewChild.required(ToolPanel);
   private readonly fileInput = viewChild.required<ElementRef<HTMLInputElement>>('fileInput');
   protected readonly dragging = signal(false);
