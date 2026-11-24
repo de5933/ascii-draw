@@ -1,4 +1,4 @@
-import { FONTS, fontCss, getFont, glyphsFor, nearestWeight } from './fonts';
+import { DEFAULT_FONT_ID, FONTS, fontCss, getFont, glyphsFor, nearestWeight } from './fonts';
 
 describe('font configs', () => {
   const printable = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i));
@@ -21,6 +21,7 @@ describe('font configs', () => {
     expect(getFont('jetbrains-mono').weights).toEqual([100, 200, 300, 400, 500, 600, 700, 800]);
     expect(getFont('ibm-plex-mono').weights).toEqual([100, 200, 300, 400, 500, 600, 700]);
     expect(getFont('fira-mono').weights).toEqual([400, 500, 700]);
+    expect(getFont('cascadia-mono').weights).toEqual([200, 300, 400, 500, 600, 700]);
   });
 
   it('falls back to the nearest available weight', () => {
@@ -31,7 +32,12 @@ describe('font configs', () => {
     expect(glyphsFor(fira, 800)).toBe(fira.glyphsByWeight[700]);
   });
 
+  it('defaults to Cascadia Mono, listed first', () => {
+    expect(DEFAULT_FONT_ID).toBe('cascadia-mono');
+    expect(FONTS[0].id).toBe('cascadia-mono');
+  });
+
   it('builds a canvas font string', () => {
-    expect(fontCss(FONTS[0], 700, 14)).toBe('700 14px "JetBrains Mono", monospace');
+    expect(fontCss(getFont('jetbrains-mono'), 700, 14)).toBe('700 14px "JetBrains Mono", monospace');
   });
 });

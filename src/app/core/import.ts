@@ -2,7 +2,7 @@ import { packRgba } from './color';
 import { AsciiDoc, DEFAULT_CELL, MAX_DOC_SIZE, createDoc } from './document';
 import { DEFAULT_FONT_WEIGHT, FontConfig, GlyphTable, glyphsFor } from './fonts/fonts';
 
-export const DEFAULT_IMPORT_WIDTH = 100;
+export const DEFAULT_IMPORT_WIDTH = 200;
 export const IMPORT_CHAR = '@';
 
 /** Which cell properties an import takes from the image. Unchecked ones get defaults. */

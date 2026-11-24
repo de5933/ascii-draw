@@ -1,0 +1,52 @@
+:host {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.label {
+  white-space: nowrap;
+}
+
+/* One joined control: three segments sharing borders. */
+.group {
+  display: inline-flex;
+  flex: 1;
+  max-width: 220px;
+  margin-left: auto;
+}
+
+button {
+  flex: 1;
+  min-width: 44px;
+  border-radius: 0;
+  margin-left: -1px;
+  color: var(--text-muted);
+}
+
+button:first-child {
+  border-radius: 6px 0 0 6px;
+  margin-left: 0;
+}
+
+button:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+button.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  position: relative; /* keep the shared border in accent color */
+}
+
+/* The last channel on: it looks on but clicking it does nothing. */
+button.fixed {
+  cursor: default;
+}
+
+button:focus-visible {
+  position: relative;
+  z-index: 1;
+}

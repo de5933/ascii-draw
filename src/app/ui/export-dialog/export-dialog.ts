@@ -15,23 +15,19 @@ import {
 } from '../../core/export';
 import { loadFont } from '../../core/fonts/fonts';
 import { EditorStore } from '../../state/editor.store';
+import { ChannelToggle } from '../channel-toggle/channel-toggle';
 
 /** Asks what to include, then downloads the document as PNG or plain text. */
 @Component({
   selector: 'app-export-dialog',
-  imports: [FormsModule],
+  imports: [FormsModule, ChannelToggle],
   template: `
     <dialog #dialog>
       <form method="dialog" (submit)="doExport($event)">
         <h2>Export</h2>
         <fieldset class="apply">
-          <legend>Include…</legend>
-          @for (o of options; track o.key) {
-            <label class="check">
-              <input type="checkbox" [name]="'include-' + o.key" [ngModel]="include()[o.key]" (ngModelChange)="setInclude(o.key, $event)" />
-              {{ o.label }}
-            </label>
-          }
+          <legend>Channels</legend>
+          <app-channel-toggle label="" [(value)]="include" />
           <p class="hint left">{{ summary() }}</p>
         </fieldset>
         @if (format() === 'png') {
@@ -71,11 +67,6 @@ export class ExportDialog {
   private readonly store = inject(EditorStore);
   private readonly dialogEl = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
 
-  protected readonly options: { key: keyof ExportChannels; label: string }[] = [
-    { key: 'ch', label: 'Text' },
-    { key: 'fg', label: 'Foreground color' },
-    { key: 'bg', label: 'Background color' },
-  ];
   protected readonly scales = EXPORT_SCALES;
   /** Kept between exports in a session. */
   protected readonly include = signal<ExportChannels>({ ...DEFAULT_EXPORT_CHANNELS });
@@ -95,10 +86,6 @@ export class ExportDialog {
     // Measure with the real font so the size labels are right.
     await loadFont(this.store.font(), this.store.fontWeight());
     this.dialogEl().nativeElement.showModal();
-  }
-
-  protected setInclude(key: keyof ExportChannels, on: boolean): void {
-    this.include.update((c) => ({ ...c, [key]: on }));
   }
 
   private size(scale: number) {

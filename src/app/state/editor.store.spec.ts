@@ -240,4 +240,17 @@ describe('EditorStore', () => {
     expect(store.rect()).toBeNull();
   });
 
+  it('keeps at least one painting channel on, with text locked on for the text tool', () => {
+    store.setChannels({ fg: false, bg: true, ch: false });
+    store.toggleChannel('bg');
+    expect(store.channels()).toEqual({ fg: false, bg: true, ch: false });
+    store.setChannels({ fg: false, bg: false, ch: false });
+    expect(store.channels()).toEqual({ fg: false, bg: true, ch: false }); // rejected
+    store.setTool('text');
+    store.toggleChannel('bg'); // allowed: typing always writes text
+    expect(store.channels()).toEqual({ fg: false, bg: false, ch: false });
+    store.setTool('brush');
+    expect(store.channels()).toEqual({ fg: false, bg: false, ch: true });
+  });
+
 });

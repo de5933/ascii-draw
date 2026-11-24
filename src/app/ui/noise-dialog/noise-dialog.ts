@@ -2,6 +2,7 @@ import { Component, ElementRef, computed, inject, signal, viewChild } from '@ang
 import { AdjustLayers, DEFAULT_ADJUST_LAYERS } from '../../core/adjust';
 import { DEFAULT_NOISE, NoiseSettings, newSeed } from '../../core/noise';
 import { EditorStore } from '../../state/editor.store';
+import { ChannelToggle } from '../channel-toggle/channel-toggle';
 
 type NumberKey = 'amount' | 'coverage';
 
@@ -11,23 +12,14 @@ type NumberKey = 'amount' | 'coverage';
  */
 @Component({
   selector: 'app-noise-dialog',
+  imports: [ChannelToggle],
   template: `
     <dialog #dialog class="adjust" (cancel)="cancel($event)">
       <form method="dialog" (submit)="apply($event)">
         <h2>Add noise</h2>
         <fieldset class="apply">
-          <legend>Apply to…</legend>
-          @for (o of layerOptions; track o.key) {
-            <label class="check">
-              <input
-                type="checkbox"
-                [name]="'noise-layer-' + o.key"
-                [checked]="layers()[o.key]"
-                (change)="setLayer(o.key, $any($event.target).checked)"
-              />
-              {{ o.label }}
-            </label>
-          }
+          <legend>Channels</legend>
+          <app-channel-toggle label="" [value]="layers()" (valueChange)="setLayers($event)" />
           @if (hint(); as h) {
             <p class="hint left">{{ h }}</p>
           }
@@ -83,7 +75,7 @@ type NumberKey = 'amount' | 'coverage';
           <button type="button" (click)="reseed()" title="Try a different random pattern">New pattern</button>
           <span class="spacer"></span>
           <button type="button" (click)="cancel()">Cancel</button>
-          <button type="submit" class="primary" [disabled]="!anyLayer() || settings().amount === 0 || settings().coverage === 0">
+          <button type="submit" class="primary" [disabled]="settings().amount === 0 || settings().coverage === 0">
             Apply
           </button>
         </div>
@@ -96,11 +88,6 @@ export class NoiseDialog {
   private readonly store = inject(EditorStore);
   private readonly dialogEl = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
 
-  protected readonly layerOptions: { key: keyof AdjustLayers; label: string }[] = [
-    { key: 'fg', label: 'Foreground color' },
-    { key: 'bg', label: 'Background color' },
-    { key: 'ch', label: 'Text' },
-  ];
   protected readonly sliders: { key: NumberKey; label: string; min: number }[] = [
     { key: 'amount', label: 'Amount', min: 0 },
     { key: 'coverage', label: 'Coverage', min: 0 },
@@ -111,11 +98,9 @@ export class NoiseDialog {
   protected readonly settings = signal<NoiseSettings>({ ...DEFAULT_NOISE });
   protected readonly selectionOnly = signal(true);
   protected readonly selectionCells = signal(0);
-  protected readonly anyLayer = computed(() => Object.values(this.layers()).some(Boolean));
   protected readonly hint = computed(() => {
     const l = this.layers();
-    if (!this.anyLayer()) return 'Choose at least one.';
-    if (l.ch) return 'Text: characters are swapped for randomly brighter or darker ones.';
+    if (l.ch) return 'Txt: characters are swapped for randomly brighter or darker ones.';
     return '';
   });
 
@@ -132,8 +117,8 @@ export class NoiseDialog {
     this.schedulePreview(); // the default amount shows right away
   }
 
-  protected setLayer(key: keyof AdjustLayers, on: boolean): void {
-    this.layers.update((l) => ({ ...l, [key]: on }));
+  protected setLayers(layers: AdjustLayers): void {
+    this.layers.set(layers);
     this.schedulePreview();
   }
 

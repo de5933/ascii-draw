@@ -14,6 +14,7 @@ import {
   pixelsToDoc,
 } from '../../core/import';
 import { EditorStore } from '../../state/editor.store';
+import { ChannelToggle } from '../channel-toggle/channel-toggle';
 import { decodeImage, measureCellAspect, readPixels } from './image-loader';
 
 /** Pre-shrink factor: the browser scales to at most this many source px per cell before area averaging. */
@@ -22,7 +23,7 @@ const OVERSAMPLE = 4;
 /** Asks how big to make an imported image, then replaces the document with it. */
 @Component({
   selector: 'app-import-dialog',
-  imports: [FormsModule],
+  imports: [FormsModule, ChannelToggle],
   template: `
     <dialog #dialog (close)="cleanup()">
       <form method="dialog" (submit)="doImport($event)">
@@ -54,19 +55,10 @@ const OVERSAMPLE = 4;
           </select>
         </label>
         <fieldset class="apply">
-          <legend>Apply to…</legend>
-          @for (o of applyOptions; track o.key) {
-            <label class="check">
-              <input type="checkbox" [name]="'apply-' + o.key" [ngModel]="apply()[o.key]" (ngModelChange)="setApply(o.key, $event)" />
-              {{ o.label }}
-            </label>
-          }
+          <legend>Channels</legend>
+          <app-channel-toggle label="" [(value)]="apply" />
           <p class="hint left">
-            @if (!anyApplied()) {
-              Choose at least one.
-            } @else {
-              {{ applySummary() }}
-            }
+            {{ applySummary() }}
           </p>
         </fieldset>
         <p class="hint">Replaces the current document.</p>
@@ -75,7 +67,7 @@ const OVERSAMPLE = 4;
         }
         <div class="actions">
           <button type="button" (click)="dialog.close()">Cancel</button>
-          <button type="submit" class="primary" [disabled]="busy() || !anyApplied()">Import</button>
+          <button type="submit" class="primary" [disabled]="busy()">Import</button>
         </div>
       </form>
     </dialog>
@@ -98,14 +90,8 @@ export class ImportDialog {
   protected readonly fontId = signal(this.store.doc().fontId);
   protected readonly error = signal('');
   protected readonly busy = signal(false);
-  protected readonly applyOptions: { key: keyof ImportChannels; label: string }[] = [
-    { key: 'ch', label: 'Text' },
-    { key: 'fg', label: 'Foreground color' },
-    { key: 'bg', label: 'Background color' },
-  ];
   /** Kept between imports in a session. */
   protected readonly apply = signal<ImportChannels>({ ...DEFAULT_IMPORT_CHANNELS });
-  protected readonly anyApplied = computed(() => Object.values(this.apply()).some(Boolean));
   protected readonly applySummary = computed(() => {
     const a = this.apply();
     const ch = a.ch ? 'characters by brightness' : `"${IMPORT_CHAR}" characters`;
@@ -145,10 +131,6 @@ export class ImportDialog {
     return nearestWeight(getFont(this.fontId()), this.store.doc().fontWeight);
   }
 
-  protected setApply(key: keyof ImportChannels, on: boolean): void {
-    this.apply.update((a) => ({ ...a, [key]: on }));
-  }
-
   protected setCols(v: number): void {
     this.cols.set(v);
     if (this.lockAspect() && v >= 1) this.updateRows();
@@ -176,7 +158,7 @@ export class ImportDialog {
 
   protected doImport(e: Event): void {
     e.preventDefault();
-    if (!this.bitmap || !this.anyApplied()) return;
+    if (!this.bitmap) return;
     const cols = Number(this.cols());
     const rows = Number(this.rows());
     if (!(cols >= 1 && rows >= 1 && cols <= MAX_DOC_SIZE && rows <= MAX_DOC_SIZE)) {

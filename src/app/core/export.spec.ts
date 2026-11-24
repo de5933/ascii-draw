@@ -1,7 +1,7 @@
 import { WHITE, packRgba, toCss } from './color';
 import { createDoc, setCell } from './document';
 import { describeExport, docToText, drawExport, exportFormat, pngSize, pngSizeOk } from './export';
-import { FONTS } from './fonts/fonts';
+import { FONTS, getFont } from './fonts/fonts';
 
 const RED = packRgba(255, 0, 0);
 const BLUE = packRgba(0, 0, 255);
@@ -70,7 +70,7 @@ describe('export', () => {
     const { ctx } = recordingCtx();
     const doc = sample();
     doc.fontWeight = 700;
-    drawExport(ctx, doc, FONTS[0], cell, 2, { ch: true, fg: true, bg: true });
+    drawExport(ctx, doc, getFont('jetbrains-mono'), cell, 2, { ch: true, fg: true, bg: true });
     expect(ctx.font).toBe('700 28px "JetBrains Mono", monospace');
   });
 

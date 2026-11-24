@@ -198,7 +198,7 @@ export function clearRect(doc: AsciiDoc, r: Rect, layers: Layers, touch: (i: num
 }
 
 export function describeClip(clip: CellClip): string {
-  const names: Record<Layer, string> = { fg: 'foreground', bg: 'background', ch: 'text' };
+  const names: Record<Layer, string> = { fg: 'Fg', bg: 'Bg', ch: 'Txt' };
   const l = clipLayers(clip).map((k) => names[k]);
-  return `${clip.width} × ${clip.height}: ${l.length === 3 ? 'all layers' : l.join(' + ')}`;
+  return `${clip.width} × ${clip.height}: ${l.length === 3 ? 'all channels' : l.join(' + ')}`;
 }

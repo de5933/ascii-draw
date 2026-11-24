@@ -1,3 +1,4 @@
+import { GLYPH_BRIGHTNESS as CASCADIA_MONO } from './brightness/cascadia-mono';
 import { GLYPH_BRIGHTNESS as FIRA_MONO } from './brightness/fira-mono';
 import { GLYPH_BRIGHTNESS as IBM_PLEX_MONO } from './brightness/ibm-plex-mono';
 import { GLYPH_BRIGHTNESS as JETBRAINS_MONO } from './brightness/jetbrains-mono';
@@ -49,12 +50,13 @@ function font(id: string, name: string, glyphsByWeight: FontConfig['glyphsByWeig
 }
 
 export const FONTS: readonly FontConfig[] = [
+  font('cascadia-mono', 'Cascadia Mono', CASCADIA_MONO),
   font('jetbrains-mono', 'JetBrains Mono', JETBRAINS_MONO),
   font('ibm-plex-mono', 'IBM Plex Mono', IBM_PLEX_MONO),
   font('fira-mono', 'Fira Mono', FIRA_MONO),
 ];
 
-export const DEFAULT_FONT_ID = FONTS[0].id;
+export const DEFAULT_FONT_ID = 'cascadia-mono';
 
 export function getFont(id: string): FontConfig {
   const f = FONTS.find((x) => x.id === id);

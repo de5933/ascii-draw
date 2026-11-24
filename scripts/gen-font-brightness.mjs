@@ -23,6 +23,7 @@ const FONTS = [
   { id: 'jetbrains-mono', family: 'JetBrains Mono', pkg: 'jetbrains-mono', lineHeight: 1.2 },
   { id: 'ibm-plex-mono', family: 'IBM Plex Mono', pkg: 'ibm-plex-mono', lineHeight: 1.2 },
   { id: 'fira-mono', family: 'Fira Mono', pkg: 'fira-mono', lineHeight: 1.2 },
+  { id: 'cascadia-mono', family: 'Cascadia Mono', pkg: 'cascadia-mono', lineHeight: 1.2 },
 ];
 
 /** Weights a @fontsource package ships (latin subset, upright). */

@@ -1,12 +1,13 @@
 import { Component, ElementRef, computed, inject, viewChild } from '@angular/core';
 import { fromHex, toCss, toHex } from '../../core/color';
-import { Layer, canPasteInto, clipLayers, describeClip } from '../../core/tools/clip';
-import { Channels } from '../../core/tools/paint';
+import { clipLayers, describeClip } from '../../core/tools/clip';
+import { ChannelToggle } from '../channel-toggle/channel-toggle';
 import { EditorStore, MAX_BRUSH_SIZE } from '../../state/editor.store';
 
 /** Left sidebar: tool, brush, channel toggles, colors and character. */
 @Component({
   selector: 'app-tool-panel',
+  imports: [ChannelToggle],
   template: `
     <section>
       <h3>Tool</h3>
@@ -42,14 +43,7 @@ import { EditorStore, MAX_BRUSH_SIZE } from '../../state/editor.store';
     @if (store.tool() === 'select') {
       <section>
         <h3>Copy, cut &amp; delete</h3>
-        <div class="checks">
-          @for (l of layerList; track l.key) {
-            <label>
-              <input type="checkbox" [checked]="store.copyLayers()[l.key]" (change)="store.setCopyLayer(l.key, $any($event.target).checked)" />
-              {{ l.label }}
-            </label>
-          }
-        </div>
+        <app-channel-toggle [value]="store.copyLayers()" (valueChange)="store.setCopyLayers($event)" />
         <div class="row actions">
           <button type="button" [disabled]="!canCopy()" (click)="copy(false)" title="Copy (Ctrl+C)">Copy</button>
           <button type="button" [disabled]="!canCopy()" (click)="copy(true)" title="Cut (Ctrl+X)">Cut</button>
@@ -60,21 +54,13 @@ import { EditorStore, MAX_BRUSH_SIZE } from '../../state/editor.store';
         <h3>Paste into</h3>
         @if (store.clipboard(); as clip) {
           <p class="muted small clip">{{ clipLabel() }}</p>
-          <div class="checks">
-            @for (l of layerList; track l.key) {
-              <label [class.disabled]="!pasteAllowed(l.key)">
-                <input
-                  type="checkbox"
-                  [checked]="store.pasteTargets()[l.key] && pasteAllowed(l.key)"
-                  [disabled]="!pasteAllowed(l.key)"
-                  (change)="store.setPasteTarget(l.key, $any($event.target).checked)"
-                />
-                {{ l.label }}
-              </label>
-            }
-          </div>
+          <app-channel-toggle
+            [value]="store.pasteTargets()"
+            (valueChange)="store.setPasteTargets($event)"
+            [rules]="store.pasteRules()"
+          />
           @if (single()) {
-            <p class="muted small">One layer was copied, so it can go into any layers. Color into text picks characters by brightness.</p>
+            <p class="muted small">One channel was copied, so it can go into any channels. Color into Txt picks characters by brightness.</p>
           }
           <div class="row actions">
             <button type="button" (click)="pasteHere()" title="Paste (Ctrl+V)">Paste</button>
@@ -109,23 +95,16 @@ import { EditorStore, MAX_BRUSH_SIZE } from '../../state/editor.store';
     }
 
     @if (store.tool() !== 'select') {
-    <section>
-      <h3>Affects</h3>
-      <div class="row">
-        @for (c of channelList; track c.key) {
-          <button
-            type="button"
-            [class.active]="store.channels()[c.key] || (c.key === 'ch' && store.tool() === 'text')"
-            [attr.aria-pressed]="store.channels()[c.key]"
-            [disabled]="c.key === 'ch' && store.tool() === 'text'"
-            (click)="store.toggleChannel(c.key)"
-            [title]="c.key === 'ch' && store.tool() === 'text' ? 'Typing always writes characters' : c.title"
-          >
-            {{ c.label }}
-          </button>
-        }
-      </div>
-    </section>
+      <section>
+        <h3>Channels</h3>
+        <app-channel-toggle
+          label=""
+          [value]="store.channels()"
+          (valueChange)="store.setChannels($event)"
+          [rules]="store.channelRules()"
+          [hints]="channelHints"
+        />
+      </section>
     }
 
     <section>
@@ -183,21 +162,12 @@ export class ToolPanel {
   private readonly charInput = viewChild.required<ElementRef<HTMLInputElement>>('charInput');
 
   protected readonly maxSize = MAX_BRUSH_SIZE;
-  protected readonly channelList: { key: keyof Channels; label: string; title: string }[] = [
-    { key: 'fg', label: 'FG', title: 'Paint foreground color (1)' },
-    { key: 'bg', label: 'BG', title: 'Paint background color (2)' },
-    { key: 'ch', label: 'Char', title: 'Paint character (3)' },
-  ];
+  protected readonly channelHints = { fg: 'shortcut 1', bg: 'shortcut 2', ch: 'shortcut 3' };
   protected readonly fgHex = computed(() => toHex(this.store.fg()));
   protected readonly bgHex = computed(() => toHex(this.store.bg()));
   protected readonly fgCss = computed(() => toCss(this.store.fg()));
   protected readonly bgCss = computed(() => toCss(this.store.bg()));
   protected readonly glyphs = this.store.glyphs;
-  protected readonly layerList: { key: Layer; label: string }[] = [
-    { key: 'fg', label: 'Foreground color' },
-    { key: 'bg', label: 'Background color' },
-    { key: 'ch', label: 'Text' },
-  ];
   protected readonly canCopy = computed(() => !!this.store.rect() && Object.values(this.store.copyLayers()).some(Boolean));
   protected readonly single = computed(() => {
     const clip = this.store.clipboard();
@@ -207,11 +177,6 @@ export class ToolPanel {
     const clip = this.store.clipboard();
     return clip ? `Clipboard ${describeClip(clip)}` : '';
   });
-
-  protected pasteAllowed(layer: Layer): boolean {
-    const clip = this.store.clipboard();
-    return !!clip && canPasteInto(clip, layer);
-  }
 
   /** Panel buttons: the cells go to our clipboard; the text (if any) to the system one too. */
   protected copy(cut: boolean): void {

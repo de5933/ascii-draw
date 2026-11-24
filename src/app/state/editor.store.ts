@@ -1,5 +1,6 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { AdjustLayers, AdjustSession, Adjustments } from '../core/adjust';
+import { CHANNELS, ChannelRules, ChannelSet, channelOn, setChannel, toggleChannel } from '../core/channels';
 import { BLACK, PackedColor, WHITE } from '../core/color';
 import { NoiseSettings } from '../core/noise';
 import { AsciiDoc, createDoc, getCell, inBounds } from '../core/document';
@@ -182,6 +183,9 @@ export class EditorStore {
       this.selection.set(null);
     }
     if (tool !== 'select') this.rect.set(null);
+    // Typing may run with only the (locked) text channel; other tools need one really on.
+    const c = this.channels();
+    if (tool !== 'text' && !c.fg && !c.bg && !c.ch) this.channels.set({ ...c, ch: true });
     this.tool.set(tool);
   }
 
@@ -252,13 +256,26 @@ export class EditorStore {
   }
 
   setCopyLayer(layer: Layer, on: boolean): void {
-    this.copyLayers.update((l) => ({ ...l, [layer]: on }));
+    this.copyLayers.update((l) => setChannel(l, layer, on));
   }
 
-  setPasteTarget(layer: Layer, on: boolean): void {
+  setCopyLayers(set: ChannelSet): void {
+    if (set.fg || set.bg || set.ch) this.copyLayers.set({ ...set });
+  }
+
+  /** Paste channels a multi-channel clip doesn't have can't be chosen. */
+  readonly pasteRules = computed<ChannelRules>(() => {
     const clip = this.clipboard();
-    if (clip && !canPasteInto(clip, layer)) return;
-    this.pasteTargets.update((l) => ({ ...l, [layer]: on }));
+    if (!clip) return {};
+    return { unavailable: { fg: !canPasteInto(clip, 'fg'), bg: !canPasteInto(clip, 'bg'), ch: !canPasteInto(clip, 'ch') } };
+  });
+
+  setPasteTarget(layer: Layer, on: boolean): void {
+    this.pasteTargets.update((l) => setChannel(l, layer, on, this.pasteRules()));
+  }
+
+  setPasteTargets(set: ChannelSet): void {
+    if (set.fg || set.bg || set.ch) this.pasteTargets.set({ ...set });
   }
 
   /** Makes a clip the clipboard; paste targets go back to its own layers. */
@@ -563,8 +580,17 @@ export class EditorStore {
     if (c && c.length === 1 && c >= ' ') this.ch.set(c); // single UTF-16 unit, printable
   }
 
+  /** The text tool always writes characters. */
+  readonly channelRules = computed<ChannelRules>(() => (this.tool() === 'text' ? { locked: { ch: true } } : {}));
+
+  /** Toggles a painting channel; the last one on stays on. */
   toggleChannel(channel: keyof Channels): void {
-    this.channels.update((c) => ({ ...c, [channel]: !c[channel] }));
+    this.channels.update((c) => toggleChannel(c, channel, this.channelRules()));
+  }
+
+  setChannels(set: ChannelSet): void {
+    const rules = this.channelRules();
+    if (CHANNELS.some((k) => channelOn(set, k, rules))) this.channels.set({ ...set });
   }
 
   setBrushSize(size: number): void {

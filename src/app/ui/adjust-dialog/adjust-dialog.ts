@@ -1,6 +1,7 @@
 import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 import { AdjustLayers, Adjustments, DEFAULT_ADJUST_LAYERS, NO_ADJUSTMENTS, isIdentity } from '../../core/adjust';
 import { EditorStore } from '../../state/editor.store';
+import { ChannelToggle } from '../channel-toggle/channel-toggle';
 
 interface Slider {
   key: keyof Adjustments;
@@ -16,23 +17,14 @@ interface Slider {
  */
 @Component({
   selector: 'app-adjust-dialog',
+  imports: [ChannelToggle],
   template: `
     <dialog #dialog class="adjust" (cancel)="cancel($event)">
       <form method="dialog" (submit)="apply($event)">
         <h2>Adjust colors</h2>
         <fieldset class="apply">
-          <legend>Apply to…</legend>
-          @for (o of layerOptions; track o.key) {
-            <label class="check">
-              <input
-                type="checkbox"
-                [name]="'layer-' + o.key"
-                [checked]="layers()[o.key]"
-                (change)="setLayer(o.key, $any($event.target).checked)"
-              />
-              {{ o.label }}
-            </label>
-          }
+          <legend>Channels</legend>
+          <app-channel-toggle label="" [value]="layers()" (valueChange)="setLayers($event)" />
           @if (hint(); as h) {
             <p class="hint left">{{ h }}</p>
           }
@@ -83,7 +75,7 @@ interface Slider {
           <button type="button" (click)="reset()" [disabled]="identity()">Reset</button>
           <span class="spacer"></span>
           <button type="button" (click)="cancel()">Cancel</button>
-          <button type="submit" class="primary" [disabled]="identity() || !anyLayer()">Apply</button>
+          <button type="submit" class="primary" [disabled]="identity()">Apply</button>
         </div>
       </form>
     </dialog>
@@ -94,11 +86,6 @@ export class AdjustDialog {
   private readonly store = inject(EditorStore);
   private readonly dialogEl = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
 
-  protected readonly layerOptions: { key: keyof AdjustLayers; label: string }[] = [
-    { key: 'fg', label: 'Foreground color' },
-    { key: 'bg', label: 'Background color' },
-    { key: 'ch', label: 'Text' },
-  ];
   protected readonly sliders: Slider[] = [
     { key: 'brightness', label: 'Brightness', min: -100, max: 100, unit: '' },
     { key: 'contrast', label: 'Contrast', min: -100, max: 100, unit: '' },
@@ -113,13 +100,11 @@ export class AdjustDialog {
   protected readonly selectionOnly = signal(true);
   protected readonly selectionCells = signal(0);
   protected readonly identity = computed(() => isIdentity(this.values()));
-  protected readonly anyLayer = computed(() => Object.values(this.layers()).some(Boolean));
   protected readonly hint = computed(() => {
     const l = this.layers();
     const v = this.values();
-    if (!this.anyLayer()) return 'Choose at least one.';
-    if (l.ch && !l.fg && !l.bg && (v.hue || v.saturation)) return "Hue and saturation don't change text.";
-    if (l.ch) return 'Text: characters are swapped for brighter or darker ones.';
+    if (l.ch && !l.fg && !l.bg && (v.hue || v.saturation)) return "Hue and saturation don't change Txt.";
+    if (l.ch) return 'Txt: characters are swapped for brighter or darker ones.';
     return '';
   });
 
@@ -135,8 +120,8 @@ export class AdjustDialog {
     this.dialogEl().nativeElement.showModal();
   }
 
-  protected setLayer(key: keyof AdjustLayers, on: boolean): void {
-    this.layers.update((l) => ({ ...l, [key]: on }));
+  protected setLayers(layers: AdjustLayers): void {
+    this.layers.set(layers);
     this.schedulePreview();
   }
 
