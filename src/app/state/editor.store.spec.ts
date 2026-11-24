@@ -253,4 +253,32 @@ describe('EditorStore', () => {
     expect(store.channels()).toEqual({ fg: false, bg: false, ch: true });
   });
 
+  it('fills a region with the paint bucket as one undo step', () => {
+    const red = packRgba(255, 0, 0);
+    store.setTool('brush');
+    store.setChannels({ fg: false, bg: false, ch: true });
+    store.ch.set('#');
+    store.beginStroke(3, 0);
+    for (let y = 1; y < store.doc().height; y++) store.strokeTo(3, y);
+    store.endStroke();
+
+    store.setTool('fill');
+    store.setChannels({ fg: false, bg: true, ch: false });
+    store.bg.set(red);
+    expect(store.fillAt(0, 0)).toBe(true);
+    expect(getCell(store.doc(), 2, 5).bg).toBe(red);
+    expect(getCell(store.doc(), 3, 5).bg).not.toBe(red); // the wall
+    expect(getCell(store.doc(), 4, 5).bg).not.toBe(red); // beyond it
+
+    store.undo();
+    expect(getCell(store.doc(), 0, 0).bg).not.toBe(red);
+    expect(getCell(store.doc(), 3, 0).ch).toBe('#');
+  });
+
+  it('keeps fill settings in range', () => {
+    store.setFillTolerance(150);
+    expect(store.fillSettings().tolerance).toBe(100);
+    store.setFillMatch({ fg: false, bg: false, ch: false });
+    expect(store.fillSettings().match).toEqual({ fg: true, bg: true, ch: true });
+  });
 });

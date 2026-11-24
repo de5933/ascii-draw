@@ -164,6 +164,10 @@ export class App {
       case '3':
         this.store.toggleChannel('ch');
         break;
+      case 'f':
+      case 'F':
+        this.store.setTool('fill');
+        break;
       case 't':
       case 'T':
         this.store.setTool('text');

@@ -190,6 +190,10 @@ export class CanvasView {
       this.rectDrag = { anchor: pos, moved: false };
       return;
     }
+    if (this.store.tool() === 'fill') {
+      this.store.fillAt(pos.x, pos.y);
+      return;
+    }
     // Strokes may start just outside the doc; they're clipped per cell.
     vp.setPointerCapture(e.pointerId);
     this.store.beginStroke(pos.x, pos.y);
@@ -465,6 +469,10 @@ export class CanvasView {
       } else if (pos && !range) {
         drawFootprint(ctx, cell, pos, [{ x: 0, y: 0 }], false);
       }
+      return;
+    }
+    if (tool === 'fill') {
+      if (pos) drawFootprint(ctx, cell, pos, [{ x: 0, y: 0 }], false);
       return;
     }
     if (tool === 'select') {

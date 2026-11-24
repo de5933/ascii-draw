@@ -18,6 +18,9 @@ import { EditorStore, MAX_BRUSH_SIZE } from '../../state/editor.store';
         <button type="button" [class.active]="store.tool() === 'eraser'" (click)="store.setTool('eraser')" title="Eraser (E)">
           Eraser
         </button>
+        <button type="button" [class.active]="store.tool() === 'fill'" (click)="store.setTool('fill')" title="Fill: paint bucket (F)">
+          Fill
+        </button>
         <button type="button" [class.active]="store.tool() === 'text'" (click)="store.setTool('text')" title="Text (T)">
           Text
         </button>
@@ -30,6 +33,12 @@ import { EditorStore, MAX_BRUSH_SIZE } from '../../state/editor.store';
           Click a cell and type. Lines wrap at the right edge and start at the column you clicked.
           Drag, Shift+arrows or double-click to select; Ctrl+A selects all. Ctrl+C / X / V copy, cut
           and paste. Esc finishes.
+        </p>
+      }
+      @if (store.tool() === 'fill') {
+        <p class="muted small">
+          Click a cell to fill its region with the current colors and character, on the channels
+          below. Match decides which neighbors count as the same region.
         </p>
       }
       @if (store.tool() === 'select') {
@@ -71,7 +80,38 @@ import { EditorStore, MAX_BRUSH_SIZE } from '../../state/editor.store';
       </section>
     }
 
-    @if (store.tool() !== 'text' && store.tool() !== 'select') {
+    @if (store.tool() === 'fill') {
+      <section>
+        <h3>Match</h3>
+        <app-channel-toggle
+          label=""
+          [value]="store.fillSettings().match"
+          (valueChange)="store.setFillMatch($event)"
+          [hints]="matchHints"
+        />
+        <h3 class="sub">Tolerance <span class="muted">{{ store.fillSettings().tolerance }}%</span></h3>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          [value]="store.fillSettings().tolerance"
+          (input)="store.setFillTolerance(+$any($event.target).value)"
+          title="0% matches exactly; higher also takes similar colors and characters of similar brightness"
+          aria-label="Tolerance"
+        />
+        <label class="check">
+          <input
+            type="checkbox"
+            [checked]="store.fillSettings().contiguous"
+            (change)="store.setFillContiguous($any($event.target).checked)"
+          />
+          Contiguous
+        </label>
+        <p class="muted small">{{ store.fillSettings().contiguous ? 'Only cells connected edge to edge.' : 'Every matching cell in the image.' }}</p>
+      </section>
+    }
+
+    @if (store.tool() === 'brush' || store.tool() === 'eraser') {
     <section>
       <h3>Size <span class="muted">{{ store.brushSize() }}</span></h3>
       <input
@@ -163,6 +203,7 @@ export class ToolPanel {
 
   protected readonly maxSize = MAX_BRUSH_SIZE;
   protected readonly channelHints = { fg: 'shortcut 1', bg: 'shortcut 2', ch: 'shortcut 3' };
+  protected readonly matchHints = { fg: 'cells must match this', bg: 'cells must match this', ch: 'cells must match this' };
   protected readonly fgHex = computed(() => toHex(this.store.fg()));
   protected readonly bgHex = computed(() => toHex(this.store.bg()));
   protected readonly fgCss = computed(() => toCss(this.store.fg()));

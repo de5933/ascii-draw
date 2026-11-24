@@ -173,6 +173,22 @@ input[type='range'] {
 
 .tools {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 4px;
+}
+
+.tools button {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+h3.sub {
+  margin-top: 12px;
+}
+
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
 }

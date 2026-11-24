@@ -7,7 +7,8 @@ import { AsciiDoc, createDoc, getCell, inBounds } from '../core/document';
 import { DEFAULT_FONT_ID, getFont, glyphsFor, nearestWeight } from '../core/fonts/fonts';
 import { EditRecorder, HistoryEntry, History } from '../core/history';
 import { BrushShape } from '../core/raster';
-import { Channels, PaintSettings, Stroke, ToolId } from '../core/tools/paint';
+import { DEFAULT_FILL, FillSettings, floodFill } from '../core/tools/fill';
+import { Channels, PaintSettings, Stroke, ToolId, paintValues } from '../core/tools/paint';
 import {
   ALL_LAYERS,
   CellClip,
@@ -69,6 +70,8 @@ export class EditorStore {
   readonly channels = signal<Channels>({ fg: true, bg: true, ch: true });
   readonly brushSize = signal(1);
   readonly brushShape = signal<BrushShape>('square');
+  /** Paint bucket: which channels must match, how closely, and whether the region must be connected. */
+  readonly fillSettings = signal<FillSettings>({ ...DEFAULT_FILL, match: { ...DEFAULT_FILL.match } });
 
   /** Set while a text session is open. */
   readonly textCaret = signal<TextCaret | null>(null);
@@ -207,6 +210,33 @@ export class EditorStore {
       this.history.push(entry);
       this.syncHistory();
     }
+  }
+
+  /** Paint bucket: fills the region around a cell with the current colors/char on the painting channels (one undo step). */
+  fillAt(x: number, y: number): boolean {
+    if (this.adjust || this.stroke) return false;
+    this.endText();
+    const doc = this.doc();
+    const rec = new EditRecorder(doc);
+    const values = paintValues('fill', this.paintSettings());
+    const cells = floodFill(doc, x, y, values, this.fillSettings(), this.glyphs(), (i) => rec.touch(i));
+    if (cells.length > 2000) this.markDocChanged();
+    else this.markCells(cells);
+    this.pushHistory(rec.finish());
+    return cells.length > 0;
+  }
+
+  setFillMatch(match: ChannelSet): void {
+    if (match.fg || match.bg || match.ch) this.fillSettings.update((s) => ({ ...s, match: { ...match } }));
+  }
+
+  setFillTolerance(t: number): void {
+    const v = Math.min(100, Math.max(0, Math.round(t) || 0));
+    this.fillSettings.update((s) => ({ ...s, tolerance: v }));
+  }
+
+  setFillContiguous(on: boolean): void {
+    this.fillSettings.update((s) => ({ ...s, contiguous: on }));
   }
 
   get stroking(): boolean {
